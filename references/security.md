@@ -101,6 +101,18 @@ _check_company_auto = True
   records from company A into a document that belongs to company B; it does
   **not** by itself hide company B's records from a company-A user (that's
   the job of an `ir.rule` using `company_id in company_ids`).
+- Never put `check_company=True` on the `company_id` field itself (doc-only,
+  `howtos/company.html`) — it checks a relation's company against `self`'s
+  own `company_id`/`company_ids`, which is meaningless applied to that field.
+- The check is strict in the other direction too: if `self.company_id` is
+  **empty**, every `check_company=True` relation on it must also point to a
+  record with an empty `company_id` — an unset company does not mean "any
+  company is fine". Verified `odoo/models.py:4328-4338`
+  (`_check_company_domain`): with no `companies` given it returns
+  `[('company_id', '=', False)]`, not an unrestricted domain. A record left
+  without a company can silently fail `_check_company` against a normal,
+  single-company related record — set `company_id` (or explicitly allow the
+  relation to be company-less too) rather than leaving it blank "to be safe".
 
 ## `sudo()` usage rules
 

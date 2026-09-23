@@ -109,14 +109,36 @@ odoo-bin -c /etc/odoo/odoo.conf -d mydb -i foo_module --test-tags :TestFoo.test_
 | `-d db` | target database |
 | `--test-tags` | filter which tests run — `module_name`, `/module_name` (path form), `:ClassName.method_name`, `+tag`/`-tag`. `tools/config.py:176-189` |
 | `--test-enable` | legacy flag — if `--test-tags` isn't already set, it defaults `test_tags` to `+standard` (`config.py:687-689`). **In 18.0, passing `--test-tags` alone already enables tests** (`config.py:582`: `test_enable = bool(test_tags)`) — `--test-enable` is rarely needed if you're already filtering with `--test-tags` |
+| `--test-file <path>` | run a single Python test file directly, e.g. `--test-file=addons/foo/tests/test_bar.py` — confirmed real, current flag (`config.py:171`), separate from `--test-tags`' `:ClassName.method` filter form |
 | `--stop-after-init` | exit after the install/update/test run instead of starting the HTTP server — always use this for a CI-style test run |
 | `--log-level=test` | verbose test output |
+| `--without-demo` | comma-separated module list (or `all`), requires `-d` and `-i` — skip loading `demo` data for the modules being installed. **Default is `False`** (demo data loads by default) — confirmed `config.py:114-116` (`my_default=False`) |
+| `-i`/`--init`, `-u`/`--update` | install / update, comma-separated modules or `all`; both require `-d` (`config.py:111-113`) |
+| `--dev=<feature,...>` | dev-only, never in production. `all` turns on everything below; `xml` reads QWeb templates straight from the `.xml` file instead of the DB on every request (skips translation of that template — only for iterating on markup); `reload` restarts the server on a Python file change; `qweb` breaks into the debugger at a `t-debug="debugger"` node; `(i)p(u)db`/`wdb` opens that Python debugger on an unhandled error before it's logged; `werkzeug` shows the full traceback on the error page instead of a generic 500 (doc-only, `reference/cli.html`) |
+| `-l`/`--language <lang>` + `--i18n-export <file>` | export every translatable string to a `.csv`/`.po`/`.tgz` and exit — combine with `--modules` to scope the export |
+| `-l`/`--language <lang>` + `--i18n-import <file>` | import a `.csv`/`.po` file of translations and exit — `-l` is required; add `--i18n-overwrite` to replace existing translated terms instead of only filling gaps (doc-only, `reference/cli.html`) |
 
 Practical default for "run this module's tests and nothing else, then exit":
 
 ```bash
 odoo-bin -c /etc/odoo/odoo.conf -d mydb -u foo_module --test-tags foo_module --stop-after-init --log-level=test
 ```
+
+## `odoo-bin shell` — interactive ORM console
+
+```bash
+odoo-bin shell -c /etc/odoo/odoo.conf -d mydb
+```
+
+Drops into a REPL (tries `ipython`/`ptpython`/`bpython`, falls back to plain
+`python`) with `env` (an `Environment` as `SUPERUSER_ID`), `self` (the admin
+`res.users`), and `odoo` already bound — useful for one-off inspection or a
+throwaway `self.env['foo.model'].search([...])` without writing a script.
+Confirmed `odoo/cli/shell.py:105-118`. The initial `context_get()` call opens
+a transaction that gets rolled back before the prompt appears, and rolled
+back again on exit (`shell.py:119-124`) — **nothing typed at the prompt is
+committed automatically**; call `env.cr.commit()` explicitly if a change
+must persist, and prefer this for read-only exploration.
 
 ## Docker lab gotcha (workspace-specific)
 

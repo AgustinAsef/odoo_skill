@@ -183,6 +183,97 @@ type in core. Producing a real `.xlsx` output means either:
 
 Do not invent a `qweb-xlsx` report_type — it does not exist in this version.
 
+## Analytical (SQL view) reports
+
+Not a PDF document — a read-only, pivot/graph-able model backed by a SQL
+`VIEW` instead of a real table. This is how core builds every "Analysis"
+screen (`sale.report`, `purchase.report`, `stock.report`, ...). Reach for
+this instead of a QWeb template when the deliverable is an aggregated data
+grid the user pivots/filters/exports, not a fixed printable document.
+
+### Model declaration
+
+```python
+class SaleReport(models.Model):
+    _name = "sale.report"
+    _description = "Sales Analysis Report"
+    _auto = False              # no physical table — the DB object is a VIEW
+    _rec_name = 'date'
+    _order = 'date desc'
+
+    name = fields.Char(string="Order Reference", readonly=True)
+    partner_id = fields.Many2one('res.partner', readonly=True)
+    price_subtotal = fields.Monetary(readonly=True)
+    price_unit = fields.Float(readonly=True, aggregator='avg')
+```
+
+Verified against `addons/sale/report/sale_report.py:8-11,20-24,83-84` (real,
+current 18.0 core code) — `_auto = False`, every field `readonly=True`
+(there is nothing to write back to), and a non-additive numeric field gets
+an explicit `aggregator=` (`'avg'` here) so pivot/graph don't silently sum it.
+
+### Populating the view: `_table_query` (the pattern core actually uses)
+
+```python
+@property
+def _table_query(self):
+    return self._query()
+
+def _query(self, with_=False, fields=None, groupby=None, from_clause=None):
+    return f"""
+        {"WITH " + with_ + " " if with_ else ""}
+        SELECT {self._select_sale()}
+        FROM {self._from_sale()}
+        WHERE {self._where_sale()}
+        GROUP BY {self._group_by_sale()}
+    """
+```
+
+Verified `addons/sale/report/sale_report.py:98,175,183,197,201,243-245` — the
+query is split into overridable `_select_sale()`/`_from_sale()`/
+`_where_sale()`/`_group_by_sale()` helper methods precisely so another module
+can extend one clause via `super()` without rebuilding the whole query. This
+`_table_query` property is the pattern used throughout core in 18.0.
+
+### `init()` + `tools.drop_view_if_exists` — the older/alternative pattern
+
+```python
+from odoo import tools
+
+def init(self):
+    tools.drop_view_if_exists(self.env.cr, self._table)
+    self.env.cr.execute(f"""
+        CREATE OR REPLACE VIEW {self._table} AS (
+            SELECT {self._select()} FROM {self._from()}
+        )
+    """)
+```
+
+Still valid and still present in older/simpler core reports, but `_table_query`
+is preferred in new code: it recomputes the view lazily on each ORM access
+instead of requiring `init()` to re-run (which only fires on module
+install/update), so it reflects overrides from modules installed *after* the
+defining one without needing its own migration. Doc-only claim
+(`howtos/create_reports.html`) for the preference; the mechanical difference
+(`init()` runs once at `-i`/`-u`, `_table_query` evaluates per query) is
+verified from `_auto`/`init` handling in `odoo/models.py`.
+
+### Security and views
+
+`_auto = False` does not exempt the model from `ir.model.access` — it still
+needs a `security/ir.model.access.csv` row, normally **read-only**
+(`perm_read=1, perm_write=0, perm_create=0, perm_unlink=0` — write/create/
+unlink against a view fail at the SQL level anyway). Verified
+`addons/sale/security/ir.model.access.csv:56`:
+`access_sale_report_salesman,sale.report,model_sale_report,sales_team.group_sale_salesman,1,0,0,0`.
+Pair it with an `ir.rule` if the underlying data is multi-company or
+per-salesperson scoped — the view itself enforces no row-level security.
+
+Expose it through `<pivot>`/`<graph>`/`<list>` views, `view_mode` in that
+order for the default action tab (`view_mode="pivot,graph,list"` is the
+common core convention, e.g. `addons/sale/report/sale_report_views.xml:128`)
+— `<form>` is normally omitted or added last, since there is nothing to edit.
+
 ## Spreadsheet / `account.report` alternative
 
 For accounting-style tabular output (aged balance, tax report, general

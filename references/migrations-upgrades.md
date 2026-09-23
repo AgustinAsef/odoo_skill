@@ -125,6 +125,58 @@ only fire on `-u` (upgrade) of an already-installed module.
   retroactively touch existing rows either way for the fields not in the
   diff.
 
+## `upgrade-util` — the `odoo.upgrade.util` helper library
+
+A helper library for **writing** migration scripts (renaming a field
+correctly means also fixing every filter, server action, related field, and
+domain that mentions it — not just the column). **Not bundled with core
+Odoo** — it is a separate repository, `github.com/odoo/upgrade-util`, and is
+what Odoo's own SaaS upgrade scripts use internally (doc-only,
+`reference/upgrades/upgrade_utils.html`; not present anywhere under
+`Versiones/V18/odoo-18.0/` in this workspace — confirmed absent from the
+local source tree, so treat every claim in this section as doc-only unless
+separately verified).
+
+```bash
+# local dev — point odoo-bin at a checkout of it
+odoo-bin --upgrade-path=/path/to/upgrade-util/src [...]
+
+# or pip-install it into the venv
+python3 -m pip install git+https://github.com/odoo/upgrade-util@master
+```
+
+```
+# requirements.txt, for odoo.sh — makes it available to migration scripts
+# pushed to a client repo, without vendoring it into the workspace
+odoo_upgrade @ git+https://github.com/odoo/upgrade-util@master
+```
+
+```python
+# inside a pre-/post-/end- migration script
+from odoo.upgrade import util
+
+def migrate(cr, installed_version):
+    util.rename_field(cr, "sale.order", "old_field", "new_field")
+```
+
+Key helpers (real signatures, verified against
+`github.com/odoo/upgrade-util` `src/util/fields.py` and `src/util/models.py`,
+`master` branch — this is upstream Odoo's own repo, not a workspace file):
+
+| Helper | Signature | Does |
+|---|---|---|
+| `rename_field` | `rename_field(cr, model, old, new, update_references=True, domain_adapter=None, skip_inherit=())` | renames a field and follows it into filters, server actions, related fields, domains, and inheriting models — the reason to prefer this over a bare SQL `ALTER TABLE ... RENAME COLUMN` |
+| `remove_field` | `remove_field(cr, model, fieldname, cascade=False, drop_column=True, skip_inherit=(), keep_as_attachments=False, update_references=True)` | removes a field and (by default) its stored column, and scrubs the same reference surface as `rename_field`; `keep_as_attachments=True` for a binary field whose data should survive as an `ir.attachment` instead of being dropped |
+| `rename_model` | `rename_model(cr, old, new, rename_table=True, ignored_m2ms="ALL_BEFORE_18_1")` | renames a model and updates every DB reference to its name; `rename_table=True` also renames the underlying table (and, from Odoo saas~18.1+, its m2m tables — 18.0 itself skips m2m table renames by default per the `ignored_m2ms` default) |
+
+Use a plain hand-written migration script (as documented above) for anything
+scoped to this workspace's own modules — a field rename local to one
+first-party module rarely touches enough indirect references to justify
+adding an external dependency. Reach for `upgrade-util` specifically when a
+rename/removal needs to survive filters, server actions, or dashboards that
+were *not* written by this workspace (e.g. adapting to a field Odoo core
+itself renamed), where missing one of those references is easy and costly.
+
 ## odoo.sh behaviour (workspace-specific)
 
 - odoo.sh runs `-u` on every module whose **files changed** in the pushed

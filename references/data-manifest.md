@@ -3,6 +3,19 @@
 Source of truth: `Versiones/V18/odoo-18.0/odoo/modules/module.py:42-79`
 (`_DEFAULT_MANIFEST`), `odoo/modules/loading.py:244-246` (hook calling).
 
+## Scaffolding a new module
+
+```bash
+odoo-bin scaffold <module_name> [dest_dir]        # default template
+odoo-bin scaffold -t <template_name_or_path> <module_name> [dest_dir]
+```
+
+Generates the skeleton directory layout below from a Jinja2 template set
+(`odoo/cli/templates/`); `dest_dir` defaults to the current directory.
+Confirmed `odoo/cli/scaffold.py:12-48`. Useful as a starting point, but the
+generated boilerplate still needs the workspace's own manifest conventions
+(below) applied — the built-in template does not know about them.
+
 ## `__manifest__.py` keys
 
 ```python
@@ -127,6 +140,17 @@ exist; at least one of them has to be newly "to install" in that same run
   triggers `-u`, which reloads every **non**-`noupdate` data file and can
   overwrite hand-edited config, even though the specific line you meant to
   change was harmless.
+- `forcecreate`: a per-`<record>` attribute that only matters inside a
+  `noupdate="1"` block, and only when the record's XML id is **not yet**
+  in the database (a record you add to an already-shipped `noupdate` file in
+  a later version). Default is `forcecreate="1"` (true) — such a new record
+  **is** created on the next `-u` even though the rest of the block is
+  frozen. Set `forcecreate="0"` to opt a specific new record out of that —
+  it is then never created in a database that already went through `-u`
+  once, only on a fresh install. Verified `odoo/tools/convert.py:361,370-371,407`
+  (`nodeattr2bool(rec, 'forcecreate', True)`); existing records with a
+  matching xmlid are always left untouched regardless of `forcecreate`
+  (`convert.py:349-360`).
 
 ## XML ids
 
@@ -245,3 +269,34 @@ foo/
 `.po` mechanism, not Python import) and `tests/` is only imported by the
 loader when running with `--test-enable`/`--test-tags`, never in production
 `__init__.py`.
+
+## Data-only importable modules (`base_import_module`)
+
+A separate module shape (doc-only, `tutorials/importable_modules.html`), for
+environments where deploying Python is not possible (e.g. some Odoo.com
+hosting) — never needed on this workspace's own odoo.sh repos, but relevant
+when a client hands over a "module" built this way, or when scaffolding
+something meant to also run there.
+
+- **No Python models or logic** — only `__manifest__.py`, `__init__.py`
+  (empty), XML data files, `security/ir.model.access.csv`. Any custom model
+  or field defined this way must be prefixed `x_` (`x_my_model`, `x_my_field`)
+  — this is mandatory, it is how the loader tells apart data-defined objects
+  from Python-defined ones.
+- Loaded via **Settings > Technical > Import Module** (developer mode) as a
+  zip of the module folder, or `odoo-bin deploy <path> https://<instance>
+  --login <user> --password <password>` from the CLI. The deploying user
+  needs `Administration/Settings` access.
+- Upload options: **Force init** re-applies `noupdate="1"` data on a module
+  that already exists (the normal `-u` noupdate skip is bypassed on purpose,
+  since there is no git-tracked upgrade path for this shape); **Import demo
+  data** loads the `demo` key.
+- Limits: cannot change an already-created field's type on a re-import: data
+  left over from a removed field or a previous version is **not** cleaned up
+  automatically — reinstalling into a fresh database, or uninstalling first,
+  is the documented workaround for both.
+- This is a real, separate loading path (`base_import_module`), not a
+  first-party module format — this workspace's own modules always ship as
+  ordinary Python modules on an addons path per the table at the top of the
+  workspace `CLAUDE.md`; do not confuse a client's zip-imported data module
+  with something to edit in place the way a Python module is.

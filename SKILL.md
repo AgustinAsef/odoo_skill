@@ -36,6 +36,14 @@ Load before writing or changing any Odoo 18 module code: Python models, XML view
 | Analytical report | pivot/graph view or `account.report` before any custom report | `views-actions-menus.md` |
 | Custom widget/client behavior | OWL component + registry, `patch()` to extend | `frontend-owl.md` |
 | Field renamed, selection changed, data moved | migration script + version bump | `migrations-upgrades.md` |
+| Aggregated analysis over several tables | SQL-view model (`_auto = False` + `_table_query`) + pivot/graph | `qweb-pdf-reports.md` |
+| Chatter, tracking, activities, portal access | inherit the mixin, never reimplement | `mixins.md` |
+| Webhook or custom URL | `http.route`; `csrf=False` only with signature check | `http-controllers.md` |
+| Script talking to a database from outside | XML-RPC/JSON-RPC with an API key | `external-api.md` |
+| New payment method / gateway | extend `payment.provider` placeholder + transaction hooks | `payment-providers.md` |
+| Invoices, taxes, chart of accounts, financial reports | `account` models, chart template, `account.report` | `accounting.md` |
+| Website pages, snippets, theme, portal JS | regular module first; theme module only for multi-site reuse | `website.md` |
+| JS unit tests or end-to-end tour | Hoot / `HttpCase.start_tour` | `js-testing.md` |
 
 ## Execution Steps
 
@@ -64,4 +72,11 @@ Return: files changed, core models/methods extended (with source `path:line`), v
 - `references/migrations-upgrades.md` — versions, pre/post/end scripts
 - `references/performance.md` — N+1, prefetch, `_read_group`, indexes
 - `references/i18n.md` — `_()`, `_lt`, `.po`, es_AR fallback
+- `references/mixins.md` — mail.thread, activities, portal, website, sequence/image mixins
+- `references/http-controllers.md` — routes, auth modes, csrf, webhooks, controller inheritance
+- `references/external-api.md` — XML-RPC/JSON-RPC clients, API keys, marshalling gotchas
+- `references/payment-providers.md` — building a `payment_<x>` module, flows, webhooks
+- `references/accounting.md` — account models, posting, chart templates, taxes, account.report
+- `references/website.md` — pages, layout, snippets, themes, publicWidget, portal OWL
+- `references/js-testing.md` — Hoot, web test helpers, tours
 - `references/repo-organization.md` — ADHOC model vs ours, branches, tooling
